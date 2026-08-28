@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Laboratório de Controle de Nível — P, PI, PD e PID</title>
+<style>
+:root{
+  --bg:#0b1020; --panel:#121a2f; --panel2:#17223d; --line:#2b3a61;
+  --text:#eef3ff; --muted:#aebbd8; --accent:#5fd3ff; --accent2:#8ee3b0;
+  --warn:#ffca6b; --danger:#ff7d8f; --water:#4eb6e8;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+  background:linear-gradient(180deg,#09101d,#0d1530 55%,#0b1020); color:var(--text);
+}
+header{padding:18px 18px 10px; max-width:1500px; margin:auto}
+h1{font-size:clamp(1.35rem,2.5vw,2rem); margin:0 0 6px}
+.subtitle{color:var(--muted); line-height:1.45; max-width:1050px}
+main{max-width:1500px;margin:auto;padding:10px 18px 28px;display:grid;gap:14px}
+.grid{display:grid;grid-template-columns:340px minmax(420px,1fr) 390px;gap:14px;align-items:start}
+.card{background:rgba(18,26,47,.94);border:1px solid var(--line);border-radius:14px;padding:14px}
+.card h2{font-size:1rem;margin:0 0 11px;color:#fff}
+.card h3{font-size:.92rem;margin:14px 0 8px;color:#dce7ff}
+.row{display:grid;grid-template-columns:1fr 108px;gap:9px;align-items:center;margin:8px 0}
+label{font-size:.88rem;color:#dbe5fb}
+input[type=number],select{
+  width:100%;padding:8px 9px;border-radius:8px;border:1px solid #3a4b76;
+  background:#0c1428;color:var(--text);font-size:16px
+}
+input[type=range]{width:100%}
+.checks{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin:8px 0}
+.check{display:flex;align-items:center;gap:7px;background:#0c1428;border:1px solid #33446e;border-radius:9px;padding:9px}
+button{
+  border:1px solid #40517c;background:#182645;color:white;border-radius:9px;
+  padding:9px 12px;font-size:.88rem;cursor:pointer;min-height:40px
+}
+button.primary{background:#126d91;border-color:#2688ad}
+button.good{background:#176846;border-color:#278965}
+button.warn{background:#744e18;border-color:#946523}
+button.danger{background:#6c2634;border-color:#963b4d}
+button:hover{filter:brightness(1.12)}
+.buttons{display:flex;gap:8px;flex-wrap:wrap}
+.small{font-size:.79rem;color:var(--muted);line-height:1.45}
+.formula{background:#0b1326;border:1px solid #2e406c;border-radius:10px;padding:10px;font-family:Georgia,serif;line-height:1.55;color:#f4f7ff}
+.metrics{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.metric{background:#0c1428;border:1px solid #31436f;border-radius:10px;padding:10px}
+.metric .v{font-size:1.25rem;font-weight:700;margin-top:2px}
+.metric .k{font-size:.76rem;color:var(--muted)}
+#tankCanvas,#plotCanvas{width:100%;display:block;background:#091224;border:1px solid #2c3b62;border-radius:12px}
+#tankCanvas{height:365px}
+#plotCanvas{height:390px}
+.legend{display:flex;gap:13px;flex-wrap:wrap;margin:8px 0 0;font-size:.78rem;color:var(--muted)}
+.dot{display:inline-block;width:10px;height:3px;margin-right:5px;vertical-align:middle;border-radius:4px}
+.status{padding:9px 10px;border-radius:9px;background:#0c1428;border:1px solid #30416c;font-size:.82rem;color:#dce6ff;margin-top:9px}
+.pill{display:inline-block;padding:3px 7px;border-radius:999px;background:#1b2b4d;color:#cfe8ff;font-size:.72rem;margin-right:5px}
+.bottom{display:grid;grid-template-columns:1.35fr .65fr;gap:14px}
+table{width:100%;border-collapse:collapse;font-size:.82rem}
+td{padding:6px;border-bottom:1px solid #26375e;color:#dbe5fb}
+td:first-child{color:var(--muted)}
+@media(max-width:1150px){.grid{grid-template-columns:320px 1fr}.right{grid-column:1/-1}.bottom{grid-template-columns:1fr}}
+@media(max-width:760px){main,header{padding-left:10px;padding-right:10px}.grid{grid-template-columns:1fr}.row{grid-template-columns:1fr 105px}#tankCanvas{height:320px}#plotCanvas{height:330px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Laboratório de Controle Feedback de Nível</h1>
+  <div class="subtitle">
+    Tanque cilíndrico aberto, alimentação líquida e descarga aberta através de uma válvula de controle.
+    Selecione P, I e D, altere a sintonia e aplique perturbações para observar a dinâmica da malha.
+  </div>
+</header>
+
+<main>
+<div class="grid">
+
+<section class="card">
+  <h2>1. Processo</h2>
+  <div class="row"><label for="diam">Diâmetro do tanque D (m)</label><input id="diam" type="number" min="0.2" max="10" step="0.1" value="2.0"></div>
+  <div class="row"><label for="hmax">Altura física H (m)</label><input id="hmax" type="number" min="0.5" max="20" step="0.1" value="4.0"></div>
+  <div class="row"><label for="qin">Vazão de entrada q<sub>in</sub> (m³/min)</label><input id="qin" type="number" min="0" max="20" step="0.05" value="1.50"></div>
+  <div class="row"><label for="kv">Coeficiente da válvula K<sub>v</sub></label><input id="kv" type="number" min="0.05" max="20" step="0.05" value="2.20"></div>
+  <div class="row"><label for="h0">Nível inicial h₀ (m)</label><input id="h0" type="number" min="0" max="20" step="0.1" value="2.0"></div>
+
+  <div class="formula">
+    A = πD²/4<br>
+    A dh/dt = q<sub>in</sub> − q<sub>out</sub><br>
+    q<sub>out</sub> = K<sub>v</sub>(u/100)√h
+  </div>
+
+  <h3>Perturbações</h3>
+  <div class="buttons">
+    <button id="qinUp" class="warn" type="button">qᵢₙ +20%</button>
+    <button id="qinDown" type="button">qᵢₙ −20%</button>
+    <button id="spUp" class="good" type="button">SP +0,5 m</button>
+    <button id="spDown" type="button">SP −0,5 m</button>
+  </div>
+  <p class="small">A descarga é gravitacional; por isso o processo é não linear em relação ao nível.</p>
+</section>
+
+<section class="card">
+  <h2>2. Tanque e malha de controle</h2>
+  <canvas id="tankCanvas" width="900" height="600" aria-label="Esquema animado do tanque"></canvas>
+  <div class="metrics" style="margin-top:10px">
+    <div class="metric"><div class="k">Nível h</div><div class="v" id="mH">—</div></div>
+    <div class="metric"><div class="k">Set-point</div><div class="v" id="mSP">—</div></div>
+    <div class="metric"><div class="k">Abertura da válvula u</div><div class="v" id="mU">—</div></div>
+    <div class="metric"><div class="k">Vazão de saída qout</div><div class="v" id="mQout">—</div></div>
+  </div>
+  <div class="status" id="status">Simulador pronto.</div>
+</section>
+
+<section class="card right">
+  <h2>3. Controlador</h2>
+  <div class="row"><label for="mode">Modo</label>
+    <select id="mode"><option value="auto">Automático</option><option value="manual">Manual</option></select>
+  </div>
+  <div class="row"><label for="sp">Set-point h<sub>SP</sub> (m)</label><input id="sp" type="number" min="0" max="20" step="0.1" value="2.5"></div>
+
+  <h3>Selecione os termos</h3>
+  <div class="checks">
+    <label class="check"><input id="useP" type="checkbox" checked> P</label>
+    <label class="check"><input id="useI" type="checkbox" checked> I</label>
+    <label class="check"><input id="useD" type="checkbox"> D</label>
+  </div>
+
+  <div class="row"><label for="kp">Kp (%/m)</label><input id="kp" type="number" min="0" max="500" step="1" value="35"></div>
+  <div class="row"><label for="ki">Ki (%/(m·min))</label><input id="ki" type="number" min="0" max="500" step="0.5" value="8"></div>
+  <div class="row"><label for="kd">Kd (%·min/m)</label><input id="kd" type="number" min="0" max="500" step="0.5" value="2"></div>
+  <div class="row"><label for="bias">Bias da válvula (%)</label><input id="bias" type="number" min="0" max="100" step="1" value="55"></div>
+  <div class="row"><label for="manualU">Saída manual u (%)</label><input id="manualU" type="number" min="0" max="100" step="1" value="55"></div>
+
+  <div class="row"><label for="action">Ação do controlador</label>
+    <select id="action">
+      <option value="outlet" selected>Direta p/ válvula na saída</option>
+      <option value="reverse">Reversa (para demonstração)</option>
+    </select>
+  </div>
+
+  <div class="formula">
+    e = SP − h<br>
+    u = bias − [P + I + D]<br>
+    P = Kp·e &nbsp; I = Ki∫e dt &nbsp; D = Kd·de/dt
+  </div>
+  <p class="small">Com válvula na <b>saída</b>, nível acima do SP deve aumentar a abertura. Por isso aparece o sinal negativo na lei acima.</p>
+
+  <h3>Execução</h3>
+  <div class="row"><label for="speed">Velocidade</label>
+    <select id="speed"><option value="1">1×</option><option value="3" selected>3×</option><option value="10">10×</option><option value="30">30×</option></select>
+  </div>
+  <div class="buttons">
+    <button id="start" class="primary" type="button">Iniciar</button>
+    <button id="pause" type="button">Pausar</button>
+    <button id="reset" class="danger" type="button">Reiniciar</button>
+  </div>
+</section>
+
+</div>
+
+<div class="bottom">
+<section class="card">
+  <h2>4. Resposta dinâmica</h2>
+  <canvas id="plotCanvas" width="1100" height="520" aria-label="Gráfico da resposta dinâmica"></canvas>
+  <div class="legend">
+    <span><span class="dot" style="background:#5fd3ff"></span>nível h</span>
+    <span><span class="dot" style="background:#8ee3b0"></span>set-point</span>
+    <span><span class="dot" style="background:#ffca6b"></span>válvula u (%) — escala direita</span>
+  </div>
+</section>
+
+<section class="card">
+  <h2>5. Leitura didática</h2>
+  <div id="controllerName" style="font-size:1.35rem;font-weight:700;margin-bottom:8px">PI</div>
+  <table>
+    <tr><td>Erro atual</td><td id="tErr">—</td></tr>
+    <tr><td>Termo P</td><td id="tP">—</td></tr>
+    <tr><td>Termo I</td><td id="tI">—</td></tr>
+    <tr><td>Termo D</td><td id="tD">—</td></tr>
+    <tr><td>Área do tanque</td><td id="tArea">—</td></tr>
+    <tr><td>Tempo simulado</td><td id="tTime">—</td></tr>
+  </table>
+  <div class="status" style="margin-top:12px">
+    <span class="pill">P</span> reação imediata ao erro<br><br>
+    <span class="pill">I</span> elimina erro estacionário<br><br>
+    <span class="pill">D</span> reage à tendência do erro
+  </div>
+  <p class="small">Experimento sugerido: rode primeiro com P, depois PI e por fim PID, mantendo a mesma perturbação de vazão.</p>
+</section>
+</div>
+</main>
+
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const tank = $('tankCanvas'), tc = tank.getContext('2d');
+const plot = $('plotCanvas'), pc = plot.getContext('2d');
+
+let running=false, last=0, acc=0;
+let h=2, integ=0, prevErr=0, u=55, qout=0, simTime=0;
+let hist=[];
+let terms={P:0,I:0,D:0};
+const baseFrame=1/60;
+
+function num(id, fallback=0){
+  const v=parseFloat($(id).value);
+  return Number.isFinite(v)?v:fallback;
+}
+function clamp(x,a,b){return Math.max(a,Math.min(b,x))}
+function params(){
+  return {
+    D:clamp(num('diam',2),.2,10),
+    H:clamp(num('hmax',4),.5,20),
+    qin:clamp(num('qin',1.5),0,20),
+    kv:clamp(num('kv',2.2),.05,20),
+    sp:clamp(num('sp',2.5),0,20),
+    kp:clamp(num('kp',35),0,500),
+    ki:clamp(num('ki',8),0,500),
+    kd:clamp(num('kd',2),0,500),
+    bias:clamp(num('bias',55),0,100),
+    manualU:clamp(num('manualU',55),0,100),
+    speed:clamp(num('speed',3),1,30)
+  }
+}
+function controllerType(){
+  const a=[];
+  if($('useP').checked)a.push('P');
+  if($('useI').checked)a.push('I');
+  if($('useD').checked)a.push('D');
+  return a.length?a.join(''):'Sem controle';
+}
+function reset(){
+  const p=params();
+  h=clamp(num('h0',2),0,p.H);
+  integ=0; prevErr=p.sp-h; u=p.bias; qout=0; simTime=0; hist=[];
+  terms={P:0,I:0,D:0};
+  running=false; $('status').textContent='Simulador reiniciado.';
+  drawAll();
+}
+function step(dt){
+  const p=params(), A=Math.PI*p.D*p.D/4;
+  const err=p.sp-h;
+  const derr=(err-prevErr)/dt;
+
+  terms.P=$('useP').checked ? p.kp*err : 0;
+  if($('useI').checked) integ += err*dt;
+  else integ=0;
+  terms.I=$('useI').checked ? p.ki*integ : 0;
+  terms.D=$('useD').checked ? p.kd*derr : 0;
+
+  if($('mode').value==='manual'){
+    u=p.manualU;
+  }else{
+    const sign=$('action').value==='outlet' ? -1 : 1;
+    const raw=p.bias + sign*(terms.P+terms.I+terms.D);
+    u=clamp(raw,0,100);
+
+    // anti-windup por integração condicional
+    if($('useI').checked && raw!==u){
+      const drivesFurther = (raw>100 && sign*err>0) || (raw<0 && sign*err<0);
+      if(drivesFurther) integ -= err*dt;
+    }
+  }
+
+  qout=p.kv*(u/100)*Math.sqrt(Math.max(h,0));
+  h += ((p.qin-qout)/A)*dt;
+  h=clamp(h,0,p.H);
+  simTime += dt;
+  prevErr=err;
+
+  if(hist.length===0 || simTime-hist[hist.length-1].t>=0.05){
+    hist.push({t:simTime,h,sp:p.sp,u});
+    if(hist.length>1600) hist.shift();
+  }
+}
+function resizeCanvas(canvas, ctx){
+  const r=canvas.getBoundingClientRect(), dpr=Math.min(window.devicePixelRatio||1,2);
+  const w=Math.max(300,Math.round(r.width*dpr));
+  const hpx=Math.max(220,Math.round(r.height*dpr));
+  if(canvas.width!==w||canvas.height!==hpx){canvas.width=w;canvas.height=hpx}
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return {w:r.width,h:r.height};
+}
+function drawTank(){
+  const {w,h:ch}=resizeCanvas(tank,tc), p=params();
+  tc.clearRect(0,0,w,ch);
+
+  // pipe inlet
+  tc.strokeStyle='#9fb1d5'; tc.lineWidth=12; tc.lineCap='round';
+  tc.beginPath(); tc.moveTo(35,75); tc.lineTo(w*0.38,75); tc.lineTo(w*0.38,115); tc.stroke();
+  tc.fillStyle='#5fd3ff'; tc.font='14px system-ui'; tc.fillText(`q_in = ${p.qin.toFixed(2)} m³/min`,35,53);
+
+  const tx=w*0.28, ty=120, tw=w*0.43, th=ch-205;
+  tc.strokeStyle='#d8e4ff'; tc.lineWidth=4;
+  tc.strokeRect(tx,ty,tw,th);
+
+  const frac=clamp(h/p.H,0,1), wh=frac*th;
+  tc.fillStyle='rgba(78,182,232,.72)';
+  tc.fillRect(tx+3,ty+th-wh,tw-6,Math.max(0,wh-3));
+
+  // level surface
+  tc.strokeStyle='#8fe4ff'; tc.lineWidth=2;
+  tc.beginPath();tc.moveTo(tx+3,ty+th-wh);tc.lineTo(tx+tw-3,ty+th-wh);tc.stroke();
+
+  // scale
+  tc.fillStyle='#aebbd8'; tc.font='12px system-ui';
+  for(let i=0;i<=4;i++){
+    const yy=ty+th-(i/4)*th;
+    tc.strokeStyle='#5f6f91';tc.lineWidth=1;
+    tc.beginPath();tc.moveTo(tx+tw+5,yy);tc.lineTo(tx+tw+15,yy);tc.stroke();
+    tc.fillText((p.H*i/4).toFixed(1)+' m',tx+tw+20,yy+4);
+  }
+
+  // outlet pipe and valve
+  const oy=ty+th-18;
+  tc.strokeStyle='#9fb1d5';tc.lineWidth=12;
+  tc.beginPath();tc.moveTo(tx+tw,oy);tc.lineTo(w-42,oy);tc.stroke();
+  const vx=tx+tw+65;
+  tc.fillStyle='#ffca6b';
+  tc.beginPath();tc.moveTo(vx-14,oy-18);tc.lineTo(vx,oy);tc.lineTo(vx-14,oy+18);tc.closePath();tc.fill();
+  tc.beginPath();tc.moveTo(vx+14,oy-18);tc.lineTo(vx,oy);tc.lineTo(vx+14,oy+18);tc.closePath();tc.fill();
+  tc.strokeStyle='#ffca6b';tc.lineWidth=3;tc.beginPath();tc.moveTo(vx,oy);tc.lineTo(vx,oy-36);tc.stroke();
+  tc.fillStyle='#ffca6b';tc.beginPath();tc.arc(vx,oy-44,9,0,Math.PI*2);tc.fill();
+
+  tc.fillStyle='#ffdf9f';tc.font='13px system-ui';
+  tc.fillText(`u = ${u.toFixed(1)}%`,vx-30,oy-58);
+  tc.fillText(`q_out = ${qout.toFixed(2)} m³/min`,Math.max(tx+tw+25,w-235),oy+34);
+
+  // LT / controller
+  const cx=tx-80, cy=ty+th*0.35;
+  tc.strokeStyle='#8ee3b0';tc.lineWidth=2;tc.setLineDash([5,4]);
+  tc.beginPath();tc.moveTo(tx,cy);tc.lineTo(cx+25,cy);tc.stroke();
+  tc.beginPath();tc.moveTo(cx,cy+25);tc.lineTo(cx,oy-44);tc.lineTo(vx-12,oy-44);tc.stroke();
+  tc.setLineDash([]);
+  tc.fillStyle='#172b32';tc.strokeStyle='#8ee3b0';tc.lineWidth=2;
+  tc.beginPath();tc.arc(cx,cy,25,0,Math.PI*2);tc.fill();tc.stroke();
+  tc.fillStyle='#dfffea';tc.font='bold 12px system-ui';tc.textAlign='center';tc.fillText('LIC',cx,cy+4);tc.textAlign='left';
+
+  tc.fillStyle='#eef3ff';tc.font='bold 16px system-ui';
+  tc.fillText(`h = ${h.toFixed(2)} m`,tx+12,ty+26);
+  tc.fillStyle='#8ee3b0';tc.font='13px system-ui';
+  tc.fillText(`SP = ${p.sp.toFixed(2)} m`,tx+12,ty+47);
+}
+function drawPlot(){
+  const {w,h:ph}=resizeCanvas(plot,pc);
+  pc.clearRect(0,0,w,ph);
+  const ml=54,mr=50,mt=18,mb=38, iw=w-ml-mr, ih=ph-mt-mb;
+  pc.strokeStyle='#62749b';pc.lineWidth=1;
+  pc.strokeRect(ml,mt,iw,ih);
+  const p=params();
+  const yMax=Math.max(p.H,0.5);
+  const tMax=Math.max(10,simTime);
+  const tMin=Math.max(0,tMax-60);
+  const X=t=>ml+(t-tMin)/(tMax-tMin)*iw;
+  const Y=y=>mt+ih-(y/yMax)*ih;
+  const U=v=>mt+ih-(v/100)*ih;
+
+  pc.font='11px system-ui';pc.fillStyle='#9fb0d0';
+  for(let i=0;i<=5;i++){
+    const yy=mt+ih-i/5*ih;
+    pc.strokeStyle='rgba(98,116,155,.22)';pc.beginPath();pc.moveTo(ml,yy);pc.lineTo(ml+iw,yy);pc.stroke();
+    pc.fillText((yMax*i/5).toFixed(1),8,yy+4);
+    pc.fillText(String(i*20),w-38,yy+4);
+  }
+  pc.fillText('nível (m)',8,12);pc.fillText('u (%)',w-40,12);
+  pc.fillText(`janela: ${tMin.toFixed(0)}–${tMax.toFixed(0)} min`,ml,ph-10);
+
+  const visible=hist.filter(d=>d.t>=tMin);
+  function line(key,color,yy){
+    if(visible.length<2)return;
+    pc.strokeStyle=color;pc.lineWidth=2;pc.beginPath();
+    visible.forEach((d,i)=>{const x=X(d.t),y=yy(d[key]);i?pc.lineTo(x,y):pc.moveTo(x,y)});
+    pc.stroke();
+  }
+  line('sp','#8ee3b0',Y); line('h','#5fd3ff',Y); line('u','#ffca6b',U);
+}
+function updateReadouts(){
+  const p=params(), err=p.sp-h, A=Math.PI*p.D*p.D/4;
+  $('mH').textContent=h.toFixed(3)+' m';
+  $('mSP').textContent=p.sp.toFixed(3)+' m';
+  $('mU').textContent=u.toFixed(1)+' %';
+  $('mQout').textContent=qout.toFixed(3)+' m³/min';
+  $('tErr').textContent=err.toFixed(3)+' m';
+  $('tP').textContent=terms.P.toFixed(2)+' %';
+  $('tI').textContent=terms.I.toFixed(2)+' %';
+  $('tD').textContent=terms.D.toFixed(2)+' %';
+  $('tArea').textContent=A.toFixed(3)+' m²';
+  $('tTime').textContent=simTime.toFixed(2)+' min';
+  $('controllerName').textContent=controllerType();
+}
+function drawAll(){drawTank();drawPlot();updateReadouts()}
+function loop(ts){
+  if(!last)last=ts;
+  const elapsed=Math.min(.08,(ts-last)/1000);last=ts;
+  if(running){
+    const p=params();
+    acc += elapsed*p.speed;
+    const dt=.01; // min por passo de integração
+    let n=0;
+    while(acc>=baseFrame && n<300){
+      step(dt); acc-=baseFrame; n++;
+    }
+  }
+  drawAll();
+  requestAnimationFrame(loop);
+}
+
+$('start').addEventListener('click',()=>{running=true;$('status').textContent='Simulação em execução.'});
+$('pause').addEventListener('click',()=>{running=false;$('status').textContent='Simulação pausada.'});
+$('reset').addEventListener('click',reset);
+$('qinUp').addEventListener('click',()=>{$('qin').value=(num('qin',1.5)*1.2).toFixed(3);$('status').textContent='Perturbação: vazão de entrada aumentada em 20%.'});
+$('qinDown').addEventListener('click',()=>{$('qin').value=Math.max(0,num('qin',1.5)*.8).toFixed(3);$('status').textContent='Perturbação: vazão de entrada reduzida em 20%.'});
+$('spUp').addEventListener('click',()=>{$('sp').value=(num('sp',2.5)+.5).toFixed(2);$('status').textContent='Mudança de referência: SP aumentado em 0,5 m.'});
+$('spDown').addEventListener('click',()=>{$('sp').value=Math.max(0,num('sp',2.5)-.5).toFixed(2);$('status').textContent='Mudança de referência: SP reduzido em 0,5 m.'});
+
+['useP','useI','useD','mode','action'].forEach(id=>$(id).addEventListener('change',()=>{
+  if(id==='useI' && !$('useI').checked)integ=0;
+  $('status').textContent='Configuração do controlador alterada para '+controllerType()+'.';
+}));
+window.addEventListener('resize',drawAll);
+reset();
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
